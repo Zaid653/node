@@ -889,7 +889,7 @@ INLINE static void fs__stat_impl(uv_fs_t* req, int do_lstat) {
     return;
   }
 
-  if (fs__stat_handle(handle, &req->stat) != 0) {
+  if (fs__stat_handle(handle, &req->statbuf) != 0) {
     DWORD error = GetLastError();
     if (do_lstat && error == ERROR_SYMLINK_NOT_SUPPORTED) {
       /* We opened a reparse point but it was not a symlink. Try again. */
@@ -904,7 +904,7 @@ INLINE static void fs__stat_impl(uv_fs_t* req, int do_lstat) {
     return;
   }
 
-  req->ptr = &req->stat;
+  req->ptr = &req->statbuf;
   req->result = 0;
   CloseHandle(handle);
 }
@@ -935,12 +935,12 @@ static void fs__fstat(uv_fs_t* req) {
     return;
   }
 
-  if (fs__stat_handle(handle, &req->stat) != 0) {
+  if (fs__stat_handle(handle, &req->statbuf) != 0) {
     SET_REQ_WIN32_ERROR(req, GetLastError());
     return;
   }
 
-  req->ptr = &req->stat;
+  req->ptr = &req->statbuf;
   req->result = 0;
 }
 
@@ -1047,6 +1047,8 @@ static void fs__sendfile(uv_fs_t* req) {
       result += n;
     }
   }
+
+  free(buf);
 
   SET_REQ_RESULT(req, result);
 }
@@ -1670,8 +1672,8 @@ int uv_fs_readlink(uv_loop_t* loop, uv_fs_t* req, const char* path,
 }
 
 
-int uv_fs_chown(uv_loop_t* loop, uv_fs_t* req, const char* path, int uid,
-    int gid, uv_fs_cb cb) {
+int uv_fs_chown(uv_loop_t* loop, uv_fs_t* req, const char* path, uv_uid_t uid,
+    uv_gid_t gid, uv_fs_cb cb) {
   uv_fs_req_init(loop, req, UV_FS_CHOWN, cb);
 
   if (fs__capture_path(loop, req, path, NULL, cb != NULL) < 0) {
@@ -1689,8 +1691,8 @@ int uv_fs_chown(uv_loop_t* loop, uv_fs_t* req, const char* path, int uid,
 }
 
 
-int uv_fs_fchown(uv_loop_t* loop, uv_fs_t* req, uv_file fd, int uid,
-    int gid, uv_fs_cb cb) {
+int uv_fs_fchown(uv_loop_t* loop, uv_fs_t* req, uv_file fd, uv_uid_t uid,
+    uv_gid_t gid, uv_fs_cb cb) {
   uv_fs_req_init(loop, req, UV_FS_FCHOWN, cb);
 
   if (cb) {

@@ -61,9 +61,6 @@ class FSReqWrap: public ReqWrap<uv_fs_t> {
 };
 
 
-static Persistent<String> encoding_symbol;
-static Persistent<String> errno_symbol;
-static Persistent<String> buf_symbol;
 static Persistent<String> oncomplete_sym;
 
 
@@ -144,8 +141,6 @@ static void After(uv_fs_t *req) {
         break;
 
       case UV_FS_OPEN:
-        /* pass thru */
-      case UV_FS_SENDFILE:
         argv[1] = Integer::New(req->result);
         break;
 
@@ -499,7 +494,7 @@ static Handle<Value> Rename(const Arguments& args) {
   }
 }
 
-static Handle<Value> Truncate(const Arguments& args) {
+static Handle<Value> FTruncate(const Arguments& args) {
   HandleScope scope;
 
   if (args.Length() < 2 || !args[0]->IsInt32()) {
@@ -600,30 +595,6 @@ static Handle<Value> MKDir(const Arguments& args) {
   } else {
     SYNC_CALL(mkdir, *path, *path, mode)
     return Undefined();
-  }
-}
-
-static Handle<Value> SendFile(const Arguments& args) {
-  HandleScope scope;
-
-  if (args.Length() < 4 ||
-      !args[0]->IsUint32() ||
-      !args[1]->IsUint32() ||
-      !args[2]->IsUint32() ||
-      !args[3]->IsUint32()) {
-    return THROW_BAD_ARGS;
-  }
-
-  int out_fd = args[0]->Uint32Value();
-  int in_fd = args[1]->Uint32Value();
-  off_t in_offset = args[2]->Uint32Value();
-  size_t length = args[3]->Uint32Value();
-
-  if (args[4]->IsFunction()) {
-    ASYNC_CALL(sendfile, args[4], out_fd, in_fd, in_offset, length)
-  } else {
-    SYNC_CALL(sendfile, 0, out_fd, in_fd, in_offset, length)
-    return scope.Close(Integer::New(SYNC_RESULT));
   }
 }
 
@@ -855,12 +826,12 @@ static Handle<Value> Chown(const Arguments& args) {
   if (len < 2) return TYPE_ERROR("uid required");
   if (len < 3) return TYPE_ERROR("gid required");
   if (!args[0]->IsString()) return TYPE_ERROR("path must be a string");
-  if (!args[1]->IsInt32()) return TYPE_ERROR("uid must be an int");
-  if (!args[2]->IsInt32()) return TYPE_ERROR("gid must be an int");
+  if (!args[1]->IsUint32()) return TYPE_ERROR("uid must be an unsigned int");
+  if (!args[2]->IsUint32()) return TYPE_ERROR("gid must be an unsigned int");
 
   String::Utf8Value path(args[0]);
-  int uid = static_cast<int>(args[1]->Int32Value());
-  int gid = static_cast<int>(args[2]->Int32Value());
+  uv_uid_t uid = static_cast<uv_uid_t>(args[1]->Uint32Value());
+  uv_gid_t gid = static_cast<uv_gid_t>(args[2]->Uint32Value());
 
   if (args[3]->IsFunction()) {
     ASYNC_CALL(chown, args[3], *path, uid, gid);
@@ -882,12 +853,12 @@ static Handle<Value> FChown(const Arguments& args) {
   if (len < 2) return TYPE_ERROR("uid required");
   if (len < 3) return TYPE_ERROR("gid required");
   if (!args[0]->IsInt32()) return TYPE_ERROR("fd must be an int");
-  if (!args[1]->IsInt32()) return TYPE_ERROR("uid must be an int");
-  if (!args[2]->IsInt32()) return TYPE_ERROR("gid must be an int");
+  if (!args[1]->IsUint32()) return TYPE_ERROR("uid must be an unsigned int");
+  if (!args[2]->IsUint32()) return TYPE_ERROR("gid must be an unsigned int");
 
   int fd = args[0]->Int32Value();
-  int uid = static_cast<int>(args[1]->Int32Value());
-  int gid = static_cast<int>(args[2]->Int32Value());
+  uv_uid_t uid = static_cast<uv_uid_t>(args[1]->Uint32Value());
+  uv_gid_t gid = static_cast<uv_gid_t>(args[2]->Uint32Value());
 
   if (args[3]->IsFunction()) {
     ASYNC_CALL(fchown, args[3], fd, uid, gid);
@@ -954,10 +925,9 @@ void File::Initialize(Handle<Object> target) {
   NODE_SET_METHOD(target, "fdatasync", Fdatasync);
   NODE_SET_METHOD(target, "fsync", Fsync);
   NODE_SET_METHOD(target, "rename", Rename);
-  NODE_SET_METHOD(target, "truncate", Truncate);
+  NODE_SET_METHOD(target, "ftruncate", FTruncate);
   NODE_SET_METHOD(target, "rmdir", RMDir);
   NODE_SET_METHOD(target, "mkdir", MKDir);
-  NODE_SET_METHOD(target, "sendfile", SendFile);
   NODE_SET_METHOD(target, "readdir", ReadDir);
   NODE_SET_METHOD(target, "stat", Stat);
   NODE_SET_METHOD(target, "lstat", LStat);
@@ -978,10 +948,6 @@ void File::Initialize(Handle<Object> target) {
 
   NODE_SET_METHOD(target, "utimes", UTimes);
   NODE_SET_METHOD(target, "futimes", FUTimes);
-
-  errno_symbol = NODE_PSYMBOL("errno");
-  encoding_symbol = NODE_PSYMBOL("node:encoding");
-  buf_symbol = NODE_PSYMBOL("__buf");
 }
 
 void InitFs(Handle<Object> target) {
